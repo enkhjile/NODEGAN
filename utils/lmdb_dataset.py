@@ -8,7 +8,7 @@ from . import get_paths_from_lmdb, read_img_lmdb, augment, modcrop
 
 
 class TrainDataset(Dataset):
-    def __init__(self, GT_dir, LQ_dir, opt, crop_size=128, scale=4):
+    def __init__(self, GT_dir, LQ_dir, crop_size=128, scale=4):
         super(TrainDataset, self).__init__()
         self.paths_GT, self.sizes_GT = get_paths_from_lmdb(GT_dir)
         self.paths_LQ, self.sizes_LQ = get_paths_from_lmdb(LQ_dir)
