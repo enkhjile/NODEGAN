@@ -2,7 +2,12 @@ import torch
 import torch.nn as nn
 from torch.nn import Parameter
 import torch.nn.init as init
-from torchdiffeq import adjoin_odeint as odeint
+try:
+    from torchdiffeq import odeint_adjoint as odeint
+except ImportError:
+    from pip._internal import main as pip
+    pip(['install', 'git+https://github.com/rtqichen/torchdiffeq'])
+    from torchdiffeq import odeint_adjoint as odeint
 
 
 def init_weights(net_l, scale=1):
