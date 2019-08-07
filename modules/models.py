@@ -92,15 +92,14 @@ class ODESR(nn.Module):
         upsample = [
             UpsampleBlock(hidden_size, 2) for _ in range(upsample_block_num)
         ]
-        self.upsample1 = nn.Sequential(*upsample)
+        self.upsample = nn.Sequential(*upsample)
         self.conv_last = nn.Conv2d(hidden_size, 3, kernel_size=9, padding=4)
 
     def forward(self, x):
         pre = self.prelu(self.conv_first(x))
         ode = self.ode(pre)
         mid = self.bn_mid(self.conv_mid(ode))
-        out = self.upsample1(mid + pre)
-        out = self.upsample2(out)
+        out = self.upsample(mid + pre)
         out = self.conv_last(out)
 
         return out

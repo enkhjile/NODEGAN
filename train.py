@@ -13,7 +13,7 @@ import argparse
 
 from utils import inf_generator, calculate_psnr, calculate_ssim, rgb2ycbcr
 from utils.lmdb_dataset import TrainDataset, ValDataset
-from modules.models import ODEMSR
+from modules.models import ODESR
 
 from google.cloud import storage
 from sqlalchemy import create_engine
@@ -30,14 +30,14 @@ parser.add_argument('--train_HQ_path', default='/mnt/disks/ssd/train.lmdb/DF2K.l
 parser.add_argument('--train_LQ_path', default='/mnt/disks/ssd/train.lmdb/DF2K_LQ.lmdb')
 parser.add_argument('--eval_path', default='/mnt/disks/ssd/val.lmdb')
 parser.add_argument('--scale', default=4)
-parser.add_argument('--crop_size', default=128)
+parser.add_argument('--crop_size', default=92)
 parser.add_argument('--train_steps', default=62500)
 parser.add_argument('--lr', default=2e-4)
 parser.add_argument('--lr_step_size', default=12500)
 parser.add_argument('--batch_size', default=256)
 parser.add_argument('--hidden_size', default=64)
-parser.add_argument('--rtol', default=1e-3)
-parser.add_argument('--atol', default=1e-3)
+parser.add_argument('--rtol', default=1e-8)
+parser.add_argument('--atol', default=1e-8)
 parser.add_argument('--update_freq', default=10)
 parser.add_argument('--resume', default=None)
 # parser.add_argument('--train_table')
@@ -90,7 +90,7 @@ def evaluate(model, update_step, writer, bucket, engine):
                 tmp_image = T.ToPILImage()(grid)
                 tmp_image.save('images/tmp_image.png')
                 upload_to_cloud(bucket, 'images/tmp_image.png',
-                                'odemsr/image_progress/gen_step_{}'.
+                                'odesr_test/image_progress/gen_step_{}'.
                                 format(update_step * args.update_freq))
                 if eval_name == 'Set5':
                     writer.add_image('Set5', grid, update_step)
@@ -122,7 +122,7 @@ def evaluate(model, update_step, writer, bucket, engine):
             writer.add_scalar('ssim_y', ssim_y, update_step)
 
     query = '''
-        INSERT INTO odemsr_val
+        INSERT INTO ode_val
             (set14_psnr_rgb, set14_psnr_y, set14_ssim_rgb, set14_ssim_y,
             set5_psnr_rgb, set5_psnr_y, set5_ssim_rgb, set5_ssim_y)
         VALUES (%f, %f, %f, %f, %f, %f, %f, %f)
@@ -142,7 +142,7 @@ def train(resume=None):
 
     print('Done')
     device = torch.device('cuda:0')
-    netG = ODEMSR(args.scale, args.hidden_size, args.rtol, args.atol).to(device)
+    netG = ODESR(args.scale, args.hidden_size, args.rtol, args.atol).to(device)
     optimG = optim.Adam(netG.parameters(), lr=args.lr, betas=[0.9, 0.999])
     schedulerG = optim.lr_scheduler.StepLR(
         optimG, step_size=args.lr_step_size, gamma=0.5
@@ -207,7 +207,7 @@ def train(resume=None):
             torch.save(
                 state_dict, 'model_ckpt/tmp_checkpoint.pth'.format(train_step))
             upload_to_cloud(bucket, 'model_ckpt/tmp_checkpoint.pth',
-                            'odemsr/model_checkpoints/gen_step_{}.pth'
+                            'odesr_test/model_checkpoints/gen_step_{}.pth'
                             .format(train_step))
 
             update_step = train_step // args.update_freq
@@ -216,7 +216,7 @@ def train(resume=None):
             writer.add_scalar('NFE_B', nfe_b, update_step)
 
             query = '''
-                INSERT INTO odemsr_train
+                INSERT INTO ode_train
                     (time, loss, nfe_f, nfe_b)
                 VALUES ({}, {}, {}, {})
                 '''.format(elapsed_time, lossG.item(), nfe_f, nfe_b)
