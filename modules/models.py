@@ -24,12 +24,12 @@ class ODEFuncMSR(nn.Module):
 
 
 class ODEMSR(nn.Module):
-    def __init__(self, scale_factor, hidden_size):
+    def __init__(self, scale_factor, hidden_size, rtol, atol):
         self.scale_factor = scale_factor
         super(ODEMSR, self).__init__()
         self.conv_first = nn.Conv2d(3, hidden_size, kernel_size=3, padding=1,
                                     bias=True)
-        self.ode = ODEBlock(ODEFuncMSR(hidden_size))
+        self.ode = ODEBlock(ODEFuncMSR(hidden_size), rtol=rtol, atol=atol)
         self.upconv1 = nn.Conv2d(hidden_size, hidden_size * 4, kernel_size=3,
                                  padding=1, bias=True)
         self.upconv2 = nn.Conv2d(hidden_size, hidden_size * 4, kernel_size=3,
@@ -78,12 +78,12 @@ class ODEFuncSR(nn.Module):
 
 
 class ODESR(nn.Module):
-    def __init__(self, scale_factor, hidden_size):
+    def __init__(self, scale_factor, hidden_size, rtol, atol):
         super(ODESR, self).__init__()
         upsample_block_num = int(math.log(scale_factor, 2))
         self.conv_first = nn.Conv2d(3, hidden_size, kernel_size=9, padding=4)
         self.prelu = nn.PReLU()
-        self.ode = ODEBlock(ODEFuncSR(hidden_size))
+        self.ode = ODEBlock(ODEFuncSR(hidden_size), rtol=rtol, atol=atol)
 
         self.conv_mid = nn.Conv2d(hidden_size, hidden_size, kernel_size=3,
                                   padding=1)
