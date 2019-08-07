@@ -9,7 +9,6 @@ from torch.utils.tensorboard import SummaryWriter
 
 import os
 import time
-import sys
 import joblib
 import argparse
 
@@ -18,16 +17,19 @@ from utils.lmdb_dataset import TrainDataset, ValDataset
 from modules.models import ODEMSR
 
 from google.cloud import storage
+from sqlalchemy import create_engine
 
 seed = 42
 torch.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
 
 
-def evaluate(model, update_step, opt, writer, bucket):
+def evaluate(model, update_step, opt, writer, bucket, engine):
     device = torch.device('cuda:0')
     model.eval()
     eval_paths = [os.path.join(opt['eval_path'], v) for v in ['Set14', 'Set5']]
+    metrics_list = []
+
     for eval_path in eval_paths:
         eval_name = os.path.basename(eval_path)
         HQ_path = os.path.join(eval_path, eval_name) + '.lmdb'
@@ -56,7 +58,7 @@ def evaluate(model, update_step, opt, writer, bucket):
                 tmp_image = T.ToPILImage()(grid)
                 tmp_image.save('tmp_image.png')
                 upload_to_cloud(bucket, 'tmp_image.png',
-                                'odesr_test/image_progress/gen_step_{}'.
+                                'odesr/image_progress/gen_step_{}'.
                                 format(update_step * opt['update_freq']))
                 if eval_name == 'Set5':
                     writer.add_image('Set5', grid, update_step)
@@ -79,12 +81,20 @@ def evaluate(model, update_step, opt, writer, bucket):
         ssim_rgb = ssim_rgb / len(eval_loader.dataset)
         ssim_y = ssim_y / len(eval_loader.dataset)
 
+        metrics_list.extend([psrn_rgb, psrn_y, ssim_rgb, ssim_y])
+
         if eval_name == 'Set5':
             writer.add_scalar('psrn_rgb', psrn_rgb, update_step)
             writer.add_scalar('psrn_y', psrn_y, update_step)
             writer.add_scalar('ssim_rgb', ssim_rgb, update_step)
             writer.add_scalar('ssim_y', ssim_y, update_step)
 
+    query = '''
+        INSERT into odemsr_val (set14_psnr_rgb, set14_psnr_y, set14_ssim_rgb,
+        set14_ssim_y, set5_psnr_rgb, set5_psnr_y, set5_ssim_rgb,
+        set5_ssim_y) values (%f, %f, %f, %f, %f, %f, %f, %f)
+    ''' % tuple(metrics_list)
+    engine.execute(query)
     model.train()
 
 
@@ -101,6 +111,8 @@ def download_from_cloud(bucket, remote_path, local_path):
 def train(opt, resume=None):
     client = storage.Client()
     bucket = client.get_bucket('gloryofresearch')
+    engine = create_engine(
+        'mysql+pymysql://root:123@/model_monitoring?unix_socket=/cloudsql/helpful-quanta-248212:us-central1:model-monitoring-1')
 
     device = torch.device('cuda:0')
 
@@ -150,7 +162,6 @@ def train(opt, resume=None):
         netG.ode.nfe = 0
 
         schedulerG.step()
-
         if train_step % opt['update_freq'] == 0:
             elapsed_time = time.time() - start_time
 
@@ -162,7 +173,7 @@ def train(opt, resume=None):
             }
             torch.save(state_dict, 'tmp_checkpoint.pth'.format(train_step))
             upload_to_cloud(bucket, 'tmp_checkpoint.pth',
-                            'odesr_test/model_checkpoints/gen_step_{}.pth'
+                            'odesr/model_checkpoints/gen_step_{}.pth'
                             .format(train_step))
 
             update_step = train_step // opt['update_freq']
@@ -170,9 +181,13 @@ def train(opt, resume=None):
             writer.add_scalar('NFE_F', nfe_f, update_step)
             writer.add_scalar('NFE_B', nfe_b, update_step)
 
-            # append to postgre
+            query = '''
+                INSERT into odemsr_train (time, loss, nfe_f, nfe_b)
+                VALUES ({}, {}, {}, {})
+                '''.format(elapsed_time, lossG.item(), nfe_f, nfe_b)
+            engine.execute(query)
 
-            evaluate(netG, update_step, opt, writer, bucket)
+            evaluate(netG, update_step, opt, writer, bucket, engine)
 
 
 if __name__ == "__main__":
@@ -180,6 +195,9 @@ if __name__ == "__main__":
     parser.add_argument('opt', type=str, help='Options path')
     parser.add_argument('--resume', type=str, help='Model ckpt')
     args = parser.parse_args()
-    
+
     opt = joblib.load(args.opt)
+
+    opt['eval_path'] = '../val.lmdb'
+    print(opt)
     train(opt, args.resume)
