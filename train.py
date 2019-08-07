@@ -36,8 +36,8 @@ parser.add_argument('--lr', default=2e-4)
 parser.add_argument('--lr_step_size', default=12500)
 parser.add_argument('--batch_size', default=256)
 parser.add_argument('--hidden_size', default=64)
-parser.add_argument('--rtol', default=1e-8)
-parser.add_argument('--atol', default=1e-8)
+parser.add_argument('--rtol', default=1e-6)
+parser.add_argument('--atol', default=1e-6)
 parser.add_argument('--update_freq', default=10)
 parser.add_argument('--resume', default=None)
 # parser.add_argument('--train_table')
@@ -90,8 +90,8 @@ def evaluate(model, update_step, writer, bucket, engine):
                 tmp_image = T.ToPILImage()(grid)
                 tmp_image.save('images/tmp_image.png')
                 upload_to_cloud(bucket, 'images/tmp_image.png',
-                                'odesr_test/image_progress/gen_step_{}'.
-                                format(update_step * args.update_freq))
+                                'odesr/image_progress/{}/gen_step_{}'.
+                                format(eval_name, update_step * args.update_freq))
                 if eval_name == 'Set5':
                     writer.add_image('Set5', grid, update_step)
 
@@ -122,7 +122,7 @@ def evaluate(model, update_step, writer, bucket, engine):
             writer.add_scalar('ssim_y', ssim_y, update_step)
 
     query = '''
-        INSERT INTO ode_val
+        INSERT INTO odesr_val
             (set14_psnr_rgb, set14_psnr_y, set14_ssim_rgb, set14_ssim_y,
             set5_psnr_rgb, set5_psnr_y, set5_ssim_rgb, set5_ssim_y)
         VALUES (%f, %f, %f, %f, %f, %f, %f, %f)
@@ -173,13 +173,10 @@ def train(resume=None):
 
     start_time = time.time()
     for train_step in range(start_step, args.train_steps + 1):
-        s = time.time()
         netG.zero_grad()
 
         imgs_dict = next(train_iterator)
-        print(time.time() - s)
 
-        s = time.time()
         img_HR = imgs_dict['img_GT'].to(device)
         img_LR = imgs_dict['img_LQ'].to(device)
         img_SR = netG(img_LR)
@@ -195,7 +192,6 @@ def train(resume=None):
         netG.ode.nfe = 0
 
         schedulerG.step()
-        print(time.time() - s)
         if train_step % args.update_freq == 0:
             elapsed_time = time.time() - start_time
             state_dict = {
@@ -207,7 +203,7 @@ def train(resume=None):
             torch.save(
                 state_dict, 'model_ckpt/tmp_checkpoint.pth'.format(train_step))
             upload_to_cloud(bucket, 'model_ckpt/tmp_checkpoint.pth',
-                            'odesr_test/model_checkpoints/gen_step_{}.pth'
+                            'odesr/model_checkpoints/gen_step_{}.pth'
                             .format(train_step))
 
             update_step = train_step // args.update_freq
@@ -216,7 +212,7 @@ def train(resume=None):
             writer.add_scalar('NFE_B', nfe_b, update_step)
 
             query = '''
-                INSERT INTO ode_train
+                INSERT INTO odesr_train
                     (time, loss, nfe_f, nfe_b)
                 VALUES ({}, {}, {}, {})
                 '''.format(elapsed_time, lossG.item(), nfe_f, nfe_b)
