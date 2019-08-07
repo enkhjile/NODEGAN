@@ -5,13 +5,17 @@ from torchvision import utils as vutils
 import torchvision.transforms as T
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+# from tensorboardX import SummaryWriter
 
 import os
 import time
+import sys
+import joblib
+import argparse
 
 from utils import inf_generator, calculate_psnr, calculate_ssim, rgb2ycbcr
-from utils.lmdb_datasets import TrainDataset, ValDataset
-from modules.models import ODESR
+from utils.lmdb_dataset import TrainDataset, ValDataset
+from modules.models import ODEMSR
 
 from google.cloud import storage
 
@@ -100,7 +104,7 @@ def train(opt, resume=None):
 
     device = torch.device('cuda:0')
 
-    netG = ODESR(opt['scale'], opt['hidden_size']).to(device)
+    netG = ODEMSR(opt['scale'], opt['hidden_size']).to(device)
     optimG = optim.Adam(netG.parameters(), lr=opt['lr'], betas=[0.9, 0.999])
     schedulerG = optim.lr_scheduler.StepLR(
         optimG, step_size=opt['lr_step_size'], gamma=0.5
@@ -111,13 +115,14 @@ def train(opt, resume=None):
 
     start_step = 1
     if resume:
+        print('Downloading ckeckpoints')
         download_from_cloud(bucket, resume, 'last_ckpt.pth')
         state_dicts = torch.load('last_ckpt.pth')
         netG.load_state_dict(state_dicts['netG'])
         optimG.load_state_dict(state_dicts['optimG'])
         schedulerG.load_state_dict(state_dicts['schedulerG'])
 
-        start_step = state_dicts['train_step']
+        start_step = state_dicts['gen_step']
         print('Resuming from step: {}'.format(start_step))
 
     train_set = TrainDataset(opt['train_HQ_path'], opt['train_LQ_path'])
@@ -156,7 +161,9 @@ def train(opt, resume=None):
                 'gen_step': train_step
             }
             torch.save(state_dict, 'tmp_checkpoint.pth'.format(train_step))
-            upload_to_cloud(bucket, 'tmp_checkpoint.pth', 'odesr_test/')
+            upload_to_cloud(bucket, 'tmp_checkpoint.pth',
+                            'odesr_test/model_checkpoints/gen_step_{}.pth'
+                            .format(train_step))
 
             update_step = train_step // opt['update_freq']
             writer.add_scalar('Loss', lossG.item(), update_step)
@@ -166,3 +173,13 @@ def train(opt, resume=None):
             # append to postgre
 
             evaluate(netG, update_step, opt, writer, bucket)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('opt', type=str, help='Options path')
+    parser.add_argument('--resume', type=str, help='Model ckpt')
+    args = parser.parse_args()
+    
+    opt = joblib.load(args.opt)
+    train(opt, args.resume)
