@@ -127,7 +127,7 @@ def train(opt, resume=None):
 
     start_step = 1
     if resume:
-        print('Downloading ckeckpoints')
+        print('Downloading checkpoints')
         download_from_cloud(bucket, resume, 'last_ckpt.pth')
         state_dicts = torch.load('last_ckpt.pth')
         netG.load_state_dict(state_dicts['netG'])
@@ -135,7 +135,7 @@ def train(opt, resume=None):
         schedulerG.load_state_dict(state_dicts['schedulerG'])
 
         start_step = state_dicts['gen_step']
-        print('Resuming from step: {}'.format(start_step))
+        print('Resuming from step: {}'.format(start_step + 1))
 
     train_set = TrainDataset(opt['train_HQ_path'], opt['train_LQ_path'])
     train_loader = DataLoader(train_set, batch_size=opt['batch_size'],
