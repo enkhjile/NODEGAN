@@ -6,7 +6,7 @@ try:
     from torchdiffeq import odeint_adjoint as odeint
 except ImportError:
     from pip._internal import main as pip
-    pip(['install', 'git+https://github.com/rtqichen/torchdiffeq'])
+    pip(['install', '--user', 'git+https://github.com/rtqichen/torchdiffeq'])
     from torchdiffeq import odeint_adjoint as odeint
 
 
