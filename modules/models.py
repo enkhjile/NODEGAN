@@ -1,5 +1,5 @@
 import torch.nn as nn
-import torch.functional as F
+import torch.nn.functional as F
 import math
 from . import ConcatConv2d, ODEBlock, UpsampleBlock, init_weights
 
