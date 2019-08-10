@@ -37,17 +37,26 @@ def l2normalize(v, eps=1e-12):
 
 
 class ODEBlock(nn.Module):
-    def __init__(self, odefunc, rtol=1e-3, atol=1e-3):
+    def __init__(self, odefunc, device, tol=1e-3):
         super(ODEBlock, self).__init__()
+        self.device = device
         self.odefunc = odefunc
         self.integration_time = torch.tensor([0, 1]).float()
-        self.rtol = rtol
-        self.atol = atol
+        self.tol = tol
 
     def forward(self, x):
         self.integration_time = self.integration_time.type_as(x)
-        out = odeint(self.odefunc, x, self.integration_time,
-                     rtol=self.rtol, atol=self.atol)
+
+        if self.odefunc.augment_dim > 0:
+            batch_size, channels, height, width = x.shape
+            aug = torch.zeros(batch_size, self.odefunc.augment_dim,
+                              height, width).to(self.device)
+            x_aug = torch.cat([x, aug], 1)
+        else:
+            x_aug = x
+
+        out = odeint(self.odefunc, x_aug, self.integration_time,
+                     rtol=self.tol, atol=self.tol)
 
         return out[1]
 

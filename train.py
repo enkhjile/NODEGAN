@@ -14,7 +14,7 @@ import argparse
 
 from utils import inf_generator, calculate_psnr, calculate_ssim, rgb2ycbcr
 from utils.lmdb_dataset import TrainDataset, ValDataset
-from modules.models import ODESR
+from modules.models import AugODESR
 from modules import Normalize, UnNormalize, CosineAnnealingLR_Restart
 
 from google.cloud import storage
@@ -32,16 +32,16 @@ parser.add_argument('--train_HQ_path', default='/mnt/disks/ssd/train.lmdb/DF2K.l
 parser.add_argument('--train_LQ_path', default='/mnt/disks/ssd/train.lmdb/DF2K_LQ.lmdb')
 parser.add_argument('--eval_path', default='/mnt/disks/ssd/val.lmdb')
 parser.add_argument('--scale', default=4)
-parser.add_argument('--crop_size', default=128)
-parser.add_argument('--train_steps', default=1000000)
-parser.add_argument('--lr', default=5e-4)
-parser.add_argument('--lr_step_size', default=250000)
-parser.add_argument('--batch_size', default=16)
+parser.add_argument('--crop_size', default=92)
+parser.add_argument('--train_steps', default=100000)
+parser.add_argument('--lr', default=2e-4)
+parser.add_argument('--lr_step_size', default=25000)
+parser.add_argument('--batch_size', default=256)
 parser.add_argument('--hidden_size', default=64)
-parser.add_argument('--rtol', default=1e-2)
-parser.add_argument('--atol', default=1e-2)
-parser.add_argument('--update_freq', default=250)
+parser.add_argument('--tol', default=1e-2)
+parser.add_argument('--update_freq', default=50)
 parser.add_argument('--resume', default=None)
+parser.add_argument('--augment_dim', default=5)
 # parser.add_argument('--train_table')
 
 args = parser.parse_args()
@@ -96,7 +96,7 @@ def evaluate(model, update_step, writer, bucket, engine):
                 tmp_image = T.ToPILImage()(grid)
                 tmp_image.save('images/tmp_image.png')
                 upload_to_cloud(bucket, 'images/tmp_image.png',
-                                'odesr/image_progress/{}/gen_step_{}'.
+                                'anodesr/image_progress/{}/gen_step_{}'.
                                 format(eval_name, update_step * args.update_freq))
                 if eval_name == 'Set5':
                     writer.add_image('Set5', grid, update_step)
@@ -128,7 +128,7 @@ def evaluate(model, update_step, writer, bucket, engine):
             writer.add_scalar('ssim_y', ssim_y, update_step)
 
     query = '''
-        INSERT INTO odesr_val
+        INSERT INTO anodesr_val
             (set14_psnr_rgb, set14_psnr_y, set14_ssim_rgb, set14_ssim_y,
             set5_psnr_rgb, set5_psnr_y, set5_ssim_rgb, set5_ssim_y)
         VALUES (%f, %f, %f, %f, %f, %f, %f, %f)
@@ -148,10 +148,11 @@ def train(resume=None):
 
     print('Done')
     device = torch.device('cuda:0')
-    netG = ODESR(args.scale, args.hidden_size, args.rtol, args.atol).to(device)
+    netG = AugODESR(args.scale, args.hidden_size, args.augment_dim,
+                    device, args.tol).to(device)
     optimG = optim.Adam(netG.parameters(), lr=args.lr, betas=[0.9, 0.999])
-    T_period = [250000, 250000, 250000, 250000]
-    restarts = [250000, 500000, 750000]
+    T_period = [25000, 25000, 25000, 25000]
+    restarts = [25000, 50000, 75000]
     restart_weights = [1, 1, 1]
 
     schedulerG = CosineAnnealingLR_Restart(optimG, T_period, eta_min=1e-7,
@@ -187,9 +188,8 @@ def train(resume=None):
     norm = Normalize(0.5, 0.5)
     print('Start training...')
     for train_step in range(start_step, args.train_steps + 1):
-        if train_step % 250000 == 0:
-            netG.ode.rtol *= 0.1
-            netG.ode.atol *= 0.1
+        if train_step % 12500 == 0:
+            netG.ode.tol *= 0.1
 
         netG.zero_grad()
 
@@ -224,7 +224,7 @@ def train(resume=None):
             torch.save(
                 state_dict, 'model_ckpt/tmp_checkpoint.pth'.format(train_step))
             upload_to_cloud(bucket, 'model_ckpt/tmp_checkpoint.pth',
-                            'odesr/model_checkpoints/gen_step_{}.pth'
+                            'anodesr/model_checkpoints/gen_step_{}.pth'
                             .format(train_step))
 
             update_step = train_step // args.update_freq
@@ -233,7 +233,7 @@ def train(resume=None):
             writer.add_scalar('NFE_B', nfe_b, update_step)
 
             query = '''
-                INSERT INTO odesr_train
+                INSERT INTO anodesr_train
                     (time, loss, nfe_f, nfe_b)
                 VALUES ({}, {}, {}, {})
                 '''.format(elapsed_time, lossG.item(), nfe_f, nfe_b)
