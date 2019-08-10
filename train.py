@@ -5,6 +5,7 @@ from torchvision import utils as vutils
 import torchvision.transforms as T
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from datetime import datetime
 # from tensorboardX import SummaryWriter
 
 import os
@@ -14,7 +15,7 @@ import argparse
 from utils import inf_generator, calculate_psnr, calculate_ssim, rgb2ycbcr
 from utils.lmdb_dataset import TrainDataset, ValDataset
 from modules.models import ODESR
-from modules import Normalize, UnNormalize
+from modules import Normalize, UnNormalize, CosineAnnealingLR_Restart
 
 from google.cloud import storage
 from sqlalchemy import create_engine
@@ -149,13 +150,19 @@ def train(resume=None):
     device = torch.device('cuda:0')
     netG = ODESR(args.scale, args.hidden_size, args.rtol, args.atol).to(device)
     optimG = optim.Adam(netG.parameters(), lr=args.lr, betas=[0.9, 0.999])
-    schedulerG = optim.lr_scheduler.StepLR(
-        optimG, step_size=args.lr_step_size, gamma=0.5
-        )
+    T_period = [250000, 250000, 250000, 250000]
+    restarts = [250000, 500000, 750000]
+    restart_weights = [1, 1, 1]
+
+    schedulerG = CosineAnnealingLR_Restart(optimG, T_period, eta_min=1e-7,
+                                           restarts=restarts,
+                                           weights=restart_weights)
     pixel_loss = nn.L1Loss()
 
     print('Generator params: ', sum(p.numel() for p in netG.parameters()))
-    writer = SummaryWriter('tensorboard/generator')
+    now = datetime.now()
+    date = now.strftime('%Y-%m-%d')
+    writer = SummaryWriter('tensorboard/{}'.format(date))
 
     start_step = 1
     if resume:
