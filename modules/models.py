@@ -2,16 +2,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
-from . import ConcatConv2d, ODEBlock, UpsampleBlock, init_weights
+from . import Conv2dTime, ODEBlock, UpsampleBlock, init_weights
 
 
 class ODEFuncMSR(nn.Module):
     def __init__(self, hidden_size):
         super(ODEFuncMSR, self).__init__()
-        self.conv1 = ConcatConv2d(hidden_size, hidden_size, kernel_size=3,
-                                  padding=1)
-        self.conv2 = ConcatConv2d(hidden_size, hidden_size, kernel_size=3,
-                                  padding=1)
+        self.conv1 = Conv2dTime(hidden_size, hidden_size, kernel_size=3,
+                                padding=1)
+        self.conv2 = Conv2dTime(hidden_size, hidden_size, kernel_size=3,
+                                padding=1)
         self.lrelu = nn.LeakyReLU(negative_slope=0.1, inplace=True)
         self.nfe = 0
         init_weights([self.conv1._layer, self.conv2._layer], scale=0.1)
@@ -61,12 +61,12 @@ class ODEMSR(nn.Module):
 class ODEFuncSR(nn.Module):
     def __init__(self, hidden_size):
         super(ODEFuncSR, self).__init__()
-        self.conv1 = ConcatConv2d(hidden_size, hidden_size, kernel_size=3,
-                                  padding=1)
+        self.conv1 = Conv2dTime(hidden_size, hidden_size, kernel_size=3,
+                                padding=1)
         self.bn1 = nn.BatchNorm2d(hidden_size)
         self.prelu = nn.PReLU()
-        self.conv2 = ConcatConv2d(hidden_size, hidden_size, kernel_size=3,
-                                  padding=1)
+        self.conv2 = Conv2dTime(hidden_size, hidden_size, kernel_size=3,
+                                padding=1)
         self.bn2 = nn.BatchNorm2d(hidden_size)
         self.nfe = 0
 
