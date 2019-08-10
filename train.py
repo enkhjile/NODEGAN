@@ -14,6 +14,7 @@ import argparse
 from utils import inf_generator, calculate_psnr, calculate_ssim, rgb2ycbcr
 from utils.lmdb_dataset import TrainDataset, ValDataset
 from modules.models import ODESR
+from modules import Normalize, UnNormalize
 
 from google.cloud import storage
 from sqlalchemy import create_engine
@@ -62,6 +63,7 @@ def evaluate(model, update_step, writer, bucket, engine):
     eval_paths = [os.path.join(args.eval_path, v) for v in ['Set14', 'Set5']]
     metrics_list = []
 
+    unnorm = UnNormalize(0.5, 0.5)
     for eval_path in eval_paths:
         eval_name = os.path.basename(eval_path)
         HQ_path = os.path.join(eval_path, eval_name) + '.lmdb'
@@ -83,14 +85,17 @@ def evaluate(model, update_step, writer, bucket, engine):
             img_LQ_r = data_dict['img_LQ_r']
 
             with torch.no_grad():
+                # SR image range [-1, 1]
                 img_SR = model(img_LQ)
+                # SR image range [0, 1]
+                img_SR = unnorm(img_SR)
             if i == 0:
                 imgs = torch.cat([img_HQ, img_SR.detach().cpu(), img_LQ_r], dim=0)
                 grid = vutils.make_grid(imgs, nrow=3, normalize=False)
                 tmp_image = T.ToPILImage()(grid)
                 tmp_image.save('images/tmp_image.png')
                 upload_to_cloud(bucket, 'images/tmp_image.png',
-                                'odesr/image_progress/{}/gen_step_{}'.
+                                'odesr_2/image_progress/{}/gen_step_{}'.
                                 format(eval_name, update_step * args.update_freq))
                 if eval_name == 'Set5':
                     writer.add_image('Set5', grid, update_step)
@@ -122,7 +127,7 @@ def evaluate(model, update_step, writer, bucket, engine):
             writer.add_scalar('ssim_y', ssim_y, update_step)
 
     query = '''
-        INSERT INTO odesr_val
+        INSERT INTO odesr_2_val
             (set14_psnr_rgb, set14_psnr_y, set14_ssim_rgb, set14_ssim_y,
             set5_psnr_rgb, set5_psnr_y, set5_ssim_rgb, set5_ssim_y)
         VALUES (%f, %f, %f, %f, %f, %f, %f, %f)
@@ -172,13 +177,17 @@ def train(resume=None):
     train_iterator = inf_generator(train_loader)
 
     start_time = time.time()
+    norm = Normalize(0.5, 0.5)
     for train_step in range(start_step, args.train_steps + 1):
         netG.zero_grad()
 
         imgs_dict = next(train_iterator)
 
         img_HR = imgs_dict['img_GT'].to(device)
+        # Normalize HR image to [-1, 1]
+        img_HR = norm(img_HR)
         img_LR = imgs_dict['img_LQ'].to(device)
+        # SR image range [-1, 1]
         img_SR = netG(img_LR)
 
         nfe_f = netG.ode.nfe
@@ -203,7 +212,7 @@ def train(resume=None):
             torch.save(
                 state_dict, 'model_ckpt/tmp_checkpoint.pth'.format(train_step))
             upload_to_cloud(bucket, 'model_ckpt/tmp_checkpoint.pth',
-                            'odesr/model_checkpoints/gen_step_{}.pth'
+                            'odesr_2/model_checkpoints/gen_step_{}.pth'
                             .format(train_step))
 
             update_step = train_step // args.update_freq
@@ -212,7 +221,7 @@ def train(resume=None):
             writer.add_scalar('NFE_B', nfe_b, update_step)
 
             query = '''
-                INSERT INTO odesr_train
+                INSERT INTO odesr_2_train
                     (time, loss, nfe_f, nfe_b)
                 VALUES ({}, {}, {}, {})
                 '''.format(elapsed_time, lossG.item(), nfe_f, nfe_b)

@@ -50,6 +50,22 @@ class ODEBlock(nn.Module):
         return out[1]
 
     @property
+    def rtol(self):
+        return self.rtol
+
+    @rtol.setter
+    def rtol(self, value):
+        self.rtol = value
+
+    @property
+    def atol(self):
+        return self.atol
+
+    @atol.setter
+    def atol(self, value):
+        self.atol = value
+
+    @property
     def nfe(self):
         return self.odefunc.nfe
 
@@ -200,3 +216,22 @@ class SNConcatConv2d(nn.Module):
         self._update_u_v()
 
         return self.module.forward(*args)
+
+
+class Normalize(object):
+    def __init__(self, mean, std):
+        self.mean = mean
+        self.std = std
+
+    def __call__(self, img_tensors):
+        # shape (N, C, H, W)
+        return (img_tensors - self.mean) / self.std
+
+
+class UnNormalize(object):
+    def __init__(self, mean, std):
+        self.mean = mean
+        self.std = std
+
+    def __call__(self, img_tensors):
+        return img_tensors * self.std + self.mean

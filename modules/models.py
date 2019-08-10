@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
@@ -101,5 +102,6 @@ class ODESR(nn.Module):
         mid = self.bn_mid(self.conv_mid(ode))
         out = self.upsample(mid + pre)
         out = self.conv_last(out)
+        out = torch.tanh(out)
 
         return out
