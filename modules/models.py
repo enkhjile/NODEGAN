@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
-from . import Conv2dTime, ODEBlock, UpsampleBlock, init_weights
+from . import Conv2dTime, ODEBlock, UpsampleBlock, init_weights, Augv2ODEBlock
 
 
 class ODEFuncMSR(nn.Module):
@@ -89,6 +89,36 @@ class ODESR(nn.Module):
         self.conv_first = nn.Conv2d(3, hidden_size, kernel_size=9, padding=4)
         self.prelu = nn.PReLU()
         self.ode = ODEBlock(ODEFuncSR(hidden_size), device, tol=tol)
+
+        self.conv_mid = nn.Conv2d(hidden_size, hidden_size, kernel_size=3,
+                                  padding=1)
+        self.bn_mid = nn.BatchNorm2d(hidden_size)
+
+        upsample = [
+            UpsampleBlock(hidden_size, 2) for _ in range(upsample_block_num)
+        ]
+        self.upsample = nn.Sequential(*upsample)
+        self.conv_last = nn.Conv2d(hidden_size, 3, kernel_size=9, padding=4)
+
+    def forward(self, x):
+        pre = self.prelu(self.conv_first(x))
+        ode = self.ode(pre)
+        mid = self.bn_mid(self.conv_mid(ode))
+        out = self.upsample(mid + pre)
+        out = self.conv_last(out)
+        out = torch.tanh(out)
+
+        return out
+
+
+class Augv2ODESR(nn.Module):
+    def __init__(self, scale_factor, hidden_size, device):
+        super(Augv2ODESR, self).__init__()
+        upsample_block_num = int(math.log(scale_factor, 2))
+        self.device = device
+        self.conv_first = nn.Conv2d(3, hidden_size, kernel_size=9, padding=4)
+        self.prelu = nn.PReLU()
+        self.ode = Augv2ODEBlock(ODEFuncSR(hidden_size), device)
 
         self.conv_mid = nn.Conv2d(hidden_size, hidden_size, kernel_size=3,
                                   padding=1)

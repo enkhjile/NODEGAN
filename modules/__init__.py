@@ -10,6 +10,10 @@ except ImportError:
     from pip._internal import main as pip
     pip(['install', '--user', 'git+https://github.com/rtqichen/torchdiffeq'])
     from torchdiffeq import odeint_adjoint as odeint
+import sys
+sys.path.append('..')
+
+from anode import odesolver_adjoint as odesolver
 
 
 def init_weights(net_l, scale=1):
@@ -34,6 +38,37 @@ def init_weights(net_l, scale=1):
 
 def l2normalize(v, eps=1e-12):
     return v / (v.norm() + eps)
+
+
+class Augv2ODEBlock(nn.Module):
+    def __init__(self, odefunc, device, Nt=20, method='RK2'):
+        super(Augv2ODEBlock, self).__init__()
+        self.device = device
+        self.options = {}
+        self.options.update({'Nt': Nt})
+        self.options.update({'method': method})
+        self.odefunc = odefunc
+
+    def forward(self, x):
+        if self.odefunc.augment_dim > 0:
+            batch_size, channels, height, width = x.shape
+            aug = torch.zeros(batch_size, self.odefunc.augment_dim,
+                              height, width).to(self.device)
+            x_aug = torch.cat([x, aug], 1)
+        else:
+            x_aug = x
+
+        out = odesolver(self.odefunc, x_aug, self.options)
+
+        return out
+
+    @property
+    def nfe(self):
+        return self.odefunc.nfe
+
+    @nfe.setter
+    def nfe(self, value):
+        self.odefunc.nfe = value
 
 
 class ODEBlock(nn.Module):
