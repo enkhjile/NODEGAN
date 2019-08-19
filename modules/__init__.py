@@ -95,22 +95,6 @@ class ODEBlock(nn.Module):
 
         return out[1]
 
-    # @property
-    # def rtol(self):
-    #     return self.rtol
-    #
-    # @rtol.setter
-    # def rtol(self, value):
-    #     self.rtol = value
-    #
-    # @property
-    # def atol(self):
-    #     return self.atol
-    #
-    # @atol.setter
-    # def atol(self, value):
-    #     self.atol = value
-
     @property
     def nfe(self):
         return self.odefunc.nfe

@@ -78,7 +78,7 @@ class ODEFuncSR(nn.Module):
         out = self.prelu(self.bn1(self.conv1(t, x)))
         out = self.bn2(self.conv2(t, out))
 
-        return x + out
+        return x + 0.2 * out
 
 
 class ODESR(nn.Module):
