@@ -34,7 +34,7 @@ parser.add_argument('--eval_path', default='/mnt/disks/ssd/val.lmdb')
 parser.add_argument('--scale', default=4)
 parser.add_argument('--crop_size', default=96)
 parser.add_argument('--train_steps', default=10000)
-parser.add_argument('--lr', default=3e-4)
+parser.add_argument('--lr', default=1e-4)
 parser.add_argument('--batch_size', default=512)
 parser.add_argument('--hidden_size', default=64)
 parser.add_argument('--tol', default=1e-6)
@@ -95,7 +95,7 @@ def evaluate(model, update_step, writer, bucket, engine):
                 tmp_image = T.ToPILImage()(grid)
                 tmp_image.save('images/tmp_image.png')
                 upload_to_cloud(bucket, 'images/tmp_image.png',
-                                'odesr02_02/image_progress/{}/gen_step_{}'.
+                                'odesr01_02/image_progress/{}/gen_step_{}'.
                                 format(eval_name, update_step * args.update_freq))
                 if eval_name == 'Set5':
                     writer.add_image('Set5', grid, update_step)
@@ -127,7 +127,7 @@ def evaluate(model, update_step, writer, bucket, engine):
             writer.add_scalar('ssim_y', ssim_y, update_step)
 
     query = '''
-        INSERT INTO odesr02_02_val
+        INSERT INTO odesr01_02_val
             (set14_psnr_rgb, set14_psnr_y, set14_ssim_rgb, set14_ssim_y,
             set5_psnr_rgb, set5_psnr_y, set5_ssim_rgb, set5_ssim_y)
         VALUES (%f, %f, %f, %f, %f, %f, %f, %f)
@@ -217,7 +217,7 @@ def train(resume=None):
             torch.save(
                 state_dict, 'model_ckpt/tmp_checkpoint.pth'.format(train_step))
             upload_to_cloud(bucket, 'model_ckpt/tmp_checkpoint.pth',
-                            'odesr02_02/model_checkpoints/gen_step_{}.pth'
+                            'odesr01_02/model_checkpoints/gen_step_{}.pth'
                             .format(train_step))
 
             update_step = train_step // args.update_freq
@@ -226,7 +226,7 @@ def train(resume=None):
             writer.add_scalar('NFE_B', nfe_b, update_step)
 
             query = '''
-                INSERT INTO odesr02_02_train
+                INSERT INTO odesr01_02_train
                     (time, loss, nfe_f, nfe_b)
                 VALUES ({}, {}, {}, {})
                 '''.format(elapsed_time, lossG.item(), nfe_f, nfe_b)
@@ -237,4 +237,8 @@ def train(resume=None):
 
 
 if __name__ == "__main__":
+    if not os.path.exists('model_ckpt'):
+        os.makedirs('model_ckpt')
+    if not os.path.exists('images'):
+        os.makedirs('images')
     train(args.resume)
