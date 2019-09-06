@@ -32,12 +32,12 @@ parser.add_argument('--train_HQ_path', default='/mnt/disks/ssd/train.lmdb/DF2K.l
 parser.add_argument('--train_LQ_path', default='/mnt/disks/ssd/train.lmdb/DF2K_LQ.lmdb')
 parser.add_argument('--eval_path', default='/mnt/disks/ssd/val.lmdb')
 parser.add_argument('--scale', default=4)
-parser.add_argument('--crop_size', default=96)
+parser.add_argument('--crop_size', default=128)
 parser.add_argument('--train_steps', default=10000)
-parser.add_argument('--lr', default=1e-4)
-parser.add_argument('--batch_size', default=512)
+parser.add_argument('--lr', default=5e-4)
+parser.add_argument('--batch_size', default=256)
 parser.add_argument('--hidden_size', default=64)
-parser.add_argument('--tol', default=1e-6)
+parser.add_argument('--tol', default=1e-8)
 parser.add_argument('--update_freq', default=50)
 parser.add_argument('--resume', default=None)
 parser.add_argument('--augment_dim', default=5)
@@ -95,7 +95,7 @@ def evaluate(model, update_step, writer, bucket, engine):
                 tmp_image = T.ToPILImage()(grid)
                 tmp_image.save('images/tmp_image.png')
                 upload_to_cloud(bucket, 'images/tmp_image.png',
-                                'odesr01_02/image_progress/{}/gen_step_{}'.
+                                'odesr01_04/image_progress/{}/gen_step_{}'.
                                 format(eval_name, update_step * args.update_freq))
                 if eval_name == 'Set5':
                     writer.add_image('Set5', grid, update_step)
@@ -127,7 +127,7 @@ def evaluate(model, update_step, writer, bucket, engine):
             writer.add_scalar('ssim_y', ssim_y, update_step)
 
     query = '''
-        INSERT INTO odesr01_02_val
+        INSERT INTO odesr01_04_val
             (set14_psnr_rgb, set14_psnr_y, set14_ssim_rgb, set14_ssim_y,
             set5_psnr_rgb, set5_psnr_y, set5_ssim_rgb, set5_ssim_y)
         VALUES (%f, %f, %f, %f, %f, %f, %f, %f)
@@ -151,10 +151,14 @@ def train(resume=None):
     optimG = optim.AdamW(netG.parameters(), lr=args.lr, betas=[0.9, 0.999],
                          weight_decay=1e-4)
     schedulerG = OneCycleLR(optimG, num_steps=args.train_steps,
-                            lr_range=(args.lr, args.lr*10))
+                            lr_range=(args.lr, args.lr*2))
     # schedulerG = ExponentialLR(optimG, gamma=5)
 
     pixel_loss = nn.MSELoss()
+    query = 'create table odesr01_04_train like odesr01_02_train'
+    engine.execute(query)
+    query = 'create table odesr01_04_val like odesr01_02_val'
+    engine.execute(query)
 
     print('Generator params: ', sum(p.numel() for p in netG.parameters()))
     now = datetime.now()
@@ -217,7 +221,7 @@ def train(resume=None):
             torch.save(
                 state_dict, 'model_ckpt/tmp_checkpoint.pth'.format(train_step))
             upload_to_cloud(bucket, 'model_ckpt/tmp_checkpoint.pth',
-                            'odesr01_02/model_checkpoints/gen_step_{}.pth'
+                            'odesr01_04/model_checkpoints/gen_step_{}.pth'
                             .format(train_step))
 
             update_step = train_step // args.update_freq
@@ -226,7 +230,7 @@ def train(resume=None):
             writer.add_scalar('NFE_B', nfe_b, update_step)
 
             query = '''
-                INSERT INTO odesr01_02_train
+                INSERT INTO odesr01_04_train
                     (time, loss, nfe_f, nfe_b)
                 VALUES ({}, {}, {}, {})
                 '''.format(elapsed_time, lossG.item(), nfe_f, nfe_b)
