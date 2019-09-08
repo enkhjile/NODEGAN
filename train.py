@@ -155,9 +155,9 @@ def train(resume=None):
     # schedulerG = ExponentialLR(optimG, gamma=5)
 
     pixel_loss = nn.MSELoss()
-    query = 'create table odesr01_04_train like odesr01_02_train'
+    query = 'create table if not exists odesr01_04_train like odesr01_02_train'
     engine.execute(query)
-    query = 'create table odesr01_04_val like odesr01_02_val'
+    query = 'create table if not exists odesr01_04_val like odesr01_02_val'
     engine.execute(query)
 
     print('Generator params: ', sum(p.numel() for p in netG.parameters()))
@@ -176,6 +176,7 @@ def train(resume=None):
 
         start_step = state_dicts['gen_step'] + 1
         print('Resuming from step: {}'.format(start_step))
+        print('Learning rage: {}'.format(schedulerG.get_lr()))
 
     train_set = TrainDataset(
         args.train_HQ_path, args.train_LQ_path, args.crop_size, args.scale)
